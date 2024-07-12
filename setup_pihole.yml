@@ -1,0 +1,53 @@
+---
+- name: Set up Pi-hole on Ubuntu Server
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Update and upgrade APT packages
+      apt:
+        update_cache: yes
+        upgrade: dist
+
+    - name: Install necessary dependencies
+      apt:
+        name: 
+          - curl
+          - sqlite3
+        state: present
+
+    - name: Download and install Pi-hole
+      shell: curl -sSL https://install.pi-hole.net | bash /dev/stdin --unattended
+      args:
+        creates: /etc/pihole
+
+    - name: Configure Pi-hole to use OpenDNS as default upstream DNS servers
+      lineinfile:
+        path: /etc/pihole/setupVars.conf
+        regexp: '^PIHOLE_DNS_'
+        line: |
+          PIHOLE_DNS_1=208.67.222.222
+          PIHOLE_DNS_2=208.67.220.220
+        state: present
+      notify: Restart Pi-hole
+
+    - name: Add Peter Lowe’s Ad and tracking server list
+      command: sqlite3 /etc/pihole/gravity.db "INSERT INTO adlist (address, enabled, comment) VALUES ('https://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&showintro=1&mimetype=plaintext', 1, 'Peter Lowe’s Ad and tracking server list')"
+      notify: Update Gravity
+
+    - name: Add EasyList
+      command: sqlite3 /etc/pihole/gravity.db "INSERT INTO adlist (address, enabled, comment) VALUES ('https://easylist.to/easylist/easylist.txt', 1, 'EasyList is the primary filter list that removes most adverts from international webpages, including unwanted frames, images and objects. It is the most popular list used by many ad blockers and forms the basis of over a dozen combination and supplementary filter lists.')"
+      notify: Update Gravity
+
+    - name: Add EasyPrivacy
+      command: sqlite3 /etc/pihole/gravity.db "INSERT INTO adlist (address, enabled, comment) VALUES ('https://easylist.to/easylist/easyprivacy.txt', 1, 'EasyPrivacy is an optional supplementary filter list that completely removes all forms of tracking from the internet, including web bugs, tracking scripts and information collectors, thereby protecting your personal data.')"
+      notify: Update Gravity
+
+  handlers:
+    - name: Restart Pi-hole
+      service:
+        name: pihole-FTL
+        state: restarted
+
+    - name: Update Gravity
+      command: pihole -g
